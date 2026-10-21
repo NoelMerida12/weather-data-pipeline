@@ -1,0 +1,34 @@
+# Environment / secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# AWS credentials
+.aws/
+
+# Python generated files
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+
+# dbt generated files
+dbt/**/target/
+dbt/**/logs/
+dbt/**/dbt_packages/
+
+# Airflow generated files
+airflow/logs/
+logs/
+airflow.db
+
+# Local data
+data/raw/
+data/processed/
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/settings.json
