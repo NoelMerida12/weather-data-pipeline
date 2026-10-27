@@ -121,7 +121,7 @@ Transformation
 Analytical data
 ```
 
-The same raw storage concept will later be moved to AWS S3.
+Raw weather data is saved locally and uploaded to Amazon S3 using Boto3.
 
 ### Idempotency
 
@@ -259,7 +259,7 @@ The main technical decisions made during this phase are:
 
 At this stage:
 
-- Raw data is stored locally rather than in cloud storage.
+- Raw data is stored both locally and in a private Amazon S3 bucket.
 - The script is executed manually rather than through an Airflow DAG.
 - The raw JSON has not yet been loaded into PostgreSQL.
 - No dbt transformations have been created yet.
