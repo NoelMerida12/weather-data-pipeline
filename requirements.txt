@@ -3,3 +3,4 @@ boto3==1.43.114
 psycopg2-binary==2.9.13
 dbt-core==1.11.16
 dbt-postgres==1.11.0
+awscrt==0.38.0

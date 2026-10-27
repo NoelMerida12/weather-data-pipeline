@@ -12,6 +12,10 @@ import json
 
 import requests
 
+import os
+
+import boto3
+
 
 # Open-Meteo endpoint used to request weather data.
 
@@ -148,30 +152,56 @@ def save_raw_data(city,target_date, data):
         )
     return output_file
 
+def upload_to_s3(local_file, city, target_date):
+    """Upload a raw weather JSON file to Amazon S3."""
+
+    bucket_name = os.environ["S3_BUCKET_NAME"]
+
+    s3_key = (
+        f"raw/weather/"
+        f"date={target_date}/"
+        f"city={city.lower()}/"
+        f"weather.json"
+    )
+
+    s3_client = boto3.client("s3")
+
+    s3_client.upload_file(
+        str(local_file),
+        bucket_name,
+        s3_key,
+    )
+
 
 def main():
     """Run the weather extraction pipeline."""
 
     target_date = get_target_date()
 
-
     print(f"Extracting weather data for {target_date}")
 
     for city in CITIES:
         coordinates = get_city_coordinates(city)
-
         weather_data = fetch_weather(
-        coordinates,
-        target_date,
-    )
+            coordinates,
+            target_date,
+        )
 
         saved_file = save_raw_data(
-        city,
-        target_date,
-        weather_data,
-    )
+            city,
+            target_date,
+            weather_data,
+        )
 
-        print(saved_file)
+        upload_to_s3(
+            saved_file,
+            city,
+            target_date,
+        )
+
+        print(f"Saved weather data locally to {saved_file}")
+        print(f"Uploaded weather data to S3 for {city}")
+
 
 if __name__ == "__main__":
     main()

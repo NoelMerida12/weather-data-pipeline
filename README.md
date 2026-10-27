@@ -276,3 +276,152 @@ Weather and geocoding data are provided by Open-Meteo.
 After running the ingestion pipeline, one directory is created for each configured city:
 
 ![Weather ingestion city partitions](docs/images/phase3-ingestion-cities.png)
+
+
+
+## AWS S3 Raw Storage
+
+The pipeline now uploads the raw weather JSON files to Amazon S3 after saving them locally.
+
+### AWS authentication
+
+AWS access is configured using a dedicated IAM user:
+
+- `weather-pipeline-dev`
+- MFA enabled
+- No permanent access keys are stored in the project
+- Authentication is performed using `aws login`
+- Temporary AWS credentials are reused inside the Airflow container through a bind mount
+
+The AWS configuration is mounted from the Windows host into the Airflow container:
+
+```text
+Windows host
+~/.aws/config
+~/.aws/login
+        |
+        v
+Airflow container
+/home/airflow/.aws/
+```
+
+This allows Boto3 to authenticate with AWS without storing AWS secrets in `.env` or GitHub.
+
+### S3 bucket
+
+Raw weather data is stored in:
+
+```text
+s3://weather-data-pipeline-noel-2026-1027/
+```
+
+The bucket is located in:
+
+```text
+eu-west-1
+```
+
+The bucket remains private and S3 Block Public Access is enabled.
+
+### S3 partition structure
+
+The same partition structure used locally is preserved in S3:
+
+```text
+raw/
+└── weather/
+    └── date=YYYY-MM-DD/
+        ├── city=alicante/
+        │   └── weather.json
+        ├── city=barcelona/
+        │   └── weather.json
+        ├── city=bilbao/
+        │   └── weather.json
+        ├── city=madrid/
+        │   └── weather.json
+        ├── city=malaga/
+        │   └── weather.json
+        ├── city=murcia/
+        │   └── weather.json
+        ├── city=palma/
+        │   └── weather.json
+        ├── city=sevilla/
+        │   └── weather.json
+        ├── city=valencia/
+        │   └── weather.json
+        └── city=zaragoza/
+            └── weather.json
+```
+
+### Upload process
+
+The Python extraction script uses Boto3 to upload each generated JSON file to S3.
+
+The flow is now:
+
+```text
+Open-Meteo
+    |
+    v
+Python extraction
+    |
+    v
+Local raw JSON
+    |
+    v
+Boto3
+    |
+    v
+Amazon S3 raw layer
+```
+
+The S3 object key is generated dynamically:
+
+```text
+raw/weather/date=<date>/city=<city>/weather.json
+```
+
+### Idempotency
+
+The pipeline was executed multiple times for the same date.
+
+Each city always uses the same deterministic S3 object key, so running the pipeline again replaces the existing object instead of creating duplicates.
+
+Expected result:
+
+```text
+First run  -> 10 objects
+Second run -> 10 objects
+```
+
+This makes the raw ingestion step idempotent for the same city and date.
+
+### Running the pipeline
+
+```powershell
+docker compose exec airflow python /opt/airflow/scripts/extract_weather.py
+```
+
+### Verify S3 objects
+
+```powershell
+aws s3 ls s3://weather-data-pipeline-noel-2026-1027/raw/weather/date=YYYY-MM-DD/ --recursive --profile weather-pipeline
+```
+
+### Screenshot
+
+The S3 raw data partition structure can be seen below:
+
+![AWS S3 raw weather data](docs/images/s3-raw-data.png)
+
+### Technical decisions
+
+- Amazon S3 is used as the cloud raw storage layer.
+- Raw API responses are preserved as JSON.
+- Data is partitioned by date and city.
+- Boto3 is used for programmatic uploads.
+- AWS authentication uses temporary credentials instead of long-lived access keys.
+- AWS configuration is mounted into the Airflow container.
+- AWS secrets are never stored in the repository.
+- The S3 bucket remains private.
+- Re-running the extraction for the same date does not create duplicate objects.
