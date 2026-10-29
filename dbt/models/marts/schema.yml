@@ -1,0 +1,15 @@
+# Data quality tests for the final weather mart.
+version: 2
+
+models:
+  - name: fct_weather_daily
+    description: "Daily weather metrics by city."
+
+    columns:
+      - name: city
+        data_tests:
+          - not_null
+
+      - name: weather_date
+        data_tests:
+          - not_null

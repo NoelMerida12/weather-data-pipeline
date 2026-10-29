@@ -1,0 +1,8 @@
+# Define the PostgreSQL tables used as dbt sources.
+version: 2
+
+sources:
+  - name: raw
+    schema: raw
+    tables:
+      - name: weather_hourly

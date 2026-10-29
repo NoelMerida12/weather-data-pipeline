@@ -425,3 +425,115 @@ The S3 raw data partition structure can be seen below:
 - AWS secrets are never stored in the repository.
 - The S3 bucket remains private.
 - Re-running the extraction for the same date does not create duplicate objects.
+
+
+## PostgreSQL and dbt Transformations
+
+In this phase, raw weather data stored in Amazon S3 is loaded into PostgreSQL and transformed using dbt Core.
+
+### Data pipeline
+
+```text
+Amazon S3 (raw JSON)
+        |
+        v
+Python + Boto3 + psycopg2
+        |
+        v
+PostgreSQL: raw.weather_hourly
+        |
+        v
+dbt Staging: stg_weather_hourly
+        |
+        v
+dbt Intermediate: int_weather_daily
+        |
+        v
+dbt Marts: fct_weather_daily
+```
+
+### PostgreSQL ingestion
+
+The `scripts/load_weather.py` script reads raw weather JSON files from S3, converts hourly arrays into database records, and loads them into PostgreSQL.
+
+The raw table uses `(city, observed_at)` as a composite primary key.
+
+Data loading uses `INSERT ... ON CONFLICT DO UPDATE` to prevent duplicate records when the pipeline is executed multiple times.
+
+The initial validation included 480 hourly records across 10 Spanish cities and two dates.
+
+### dbt models
+
+The dbt project is organized into three transformation layers.
+
+| Layer | Model | Purpose |
+|---|---|---|
+| Staging | `stg_weather_hourly` | Standardizes column names and creates a UTC weather date |
+| Intermediate | `int_weather_daily` | Calculates daily weather metrics using SQL aggregations |
+| Marts | `fct_weather_daily` | Creates the final analytical table with weather classifications and completeness indicators |
+
+The final mart contains daily temperature, humidity, precipitation, wind speed, and completeness metrics.
+
+The staging and intermediate models use views, while the final mart is materialized as a PostgreSQL table.
+
+### Data quality tests
+
+Four dbt tests were implemented:
+
+- `not_null` on `city`
+- `not_null` on `weather_date`
+- `assert_unique_city_date` to detect duplicate city/date combinations
+- `assert_complete_day` to check for 24 hourly records per city and day
+
+All four tests passed during validation.
+
+### Running the pipeline
+
+First, extract and upload weather data to S3:
+
+```powershell
+docker compose exec airflow python /opt/airflow/scripts/extract_weather.py
+```
+
+Then load the data into PostgreSQL:
+
+```powershell
+docker compose exec airflow python /opt/airflow/scripts/load_weather.py
+```
+
+Run all dbt models:
+
+```powershell
+docker compose exec airflow dbt run --project-dir /opt/airflow/dbt --profiles-dir /opt/airflow/dbt
+```
+
+Run the data quality tests:
+
+```powershell
+docker compose exec airflow dbt test --project-dir /opt/airflow/dbt --profiles-dir /opt/airflow/dbt
+```
+
+### Validation screenshots
+
+**Final weather mart**
+
+![Weather mart results](docs/images/weather-mart.png)
+
+**dbt data quality tests**
+
+![dbt tests](docs/images/dbt-test.png)
+
+### Technical decisions
+
+- PostgreSQL stores hourly weather observations.
+- Python and psycopg2 handle the S3-to-PostgreSQL ingestion.
+- Upserts prevent duplicate city/hour combinations.
+- dbt separates transformations into reusable SQL models.
+- `source()` references the original PostgreSQL table.
+- `ref()` defines dependencies between dbt models.
+- The final mart is materialized as a table for analytical consumption.
+- Data quality tests validate essential business rules.
+
+Pipeline orchestration will be implemented using Apache Airflow.
+
+> Work in progress.

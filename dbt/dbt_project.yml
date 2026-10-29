@@ -1,0 +1,14 @@
+# Name of our dbt project
+name: 'weather_pipeline'
+
+# Project version
+version: '1.0.0'
+
+# dbt configuration version
+config-version: 2
+
+# Connection profile used by dbt
+profile: 'weather_pipeline'
+
+# Directory containing SQL models
+model-paths: ['models']

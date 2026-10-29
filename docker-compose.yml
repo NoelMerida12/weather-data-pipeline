@@ -3,7 +3,6 @@ services:
   postgres:
     image: postgres:17
     container_name: weather-postgres
-
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -24,6 +23,24 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: weather-pgadmin
+
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
+
+    ports:
+      - "127.0.0.1:5050:80"
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
 
 
   airflow:
@@ -48,7 +65,13 @@ services:
       AWS_PROFILE: ${AWS_PROFILE}
       AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION}
       S3_BUCKET_NAME: ${S3_BUCKET_NAME}
-
+      
+      # PostgreSQL connection for the weather loading script
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
       - "${AIRFLOW_PORT}:8080"
 
@@ -79,3 +102,4 @@ services:
 volumes:
   postgres_data:
   airflow_logs:
+  pgadmin_data:
