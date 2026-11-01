@@ -57,17 +57,23 @@ def get_city_coordinates(city):
         "format": "json",
     }
 
-    response = requests.get(
-        GEOCODING_API_URL,
-        params=parameters,
-        timeout=30,
-    )
+    try:
+        response = requests.get(
+            GEOCODING_API_URL,
+            params=parameters,
+            timeout=30
+        )
 
-    # Raise an error if the HTTP request was not successful.
-    response.raise_for_status()
+        # Raise an error if the HTTP request was not successful.
+        response.raise_for_status()
 
-    # Convert the JSON response into a Python dictionary.
-    data = response.json()
+        # Convert the JSON response into a Python dictionary.
+        data = response.json()
+
+    except requests.exceptions.RequestException as error:
+        raise RuntimeError(
+            f"Failed to get coordinates for {city}: {error}"
+        ) from error
 
     # Check if the API found at least one city.
     if "results" not in data or not data["results"]:
@@ -108,19 +114,56 @@ def fetch_weather(city_coordinates, target_date):
         "timezone": "UTC",
     }
 
-    response = requests.get(
-        WEATHER_API_URL,
-        params=parameters,
-        timeout=30,
-    )
+    try:
+        response = requests.get(
+            WEATHER_API_URL,
+            params=parameters,
+            timeout=30,
+        )
 
-    response.raise_for_status()
+        response.raise_for_status()
+        data = response.json()
 
-    data = response.json()
+    except requests.exceptions.RequestException as error:
+        raise RuntimeError(
+            f"Failed to fetch weather for "
+            f"{city_coordinates['name']} on {target_date}: {error}"
+        ) from error
 
     # Check that the API response contains hourly data.
     if "hourly" not in data:
-        raise ValueError ("The API response does not contain hourly weather data.")
+        raise ValueError(
+            "The API response does not contain hourly weather data."
+        )
+
+    # Validate that the response contains 24 hourly records.
+    hourly_records = data["hourly"].get("time", [])
+
+    if len(hourly_records) != 24:
+        raise ValueError(
+            f"Incomplete weather data for "
+            f"{city_coordinates['name']} on {target_date}: "
+            f"expected 24 hours, got {len(hourly_records)}"
+        )
+
+    # Validate all hourly weather variables.
+    for variable in HOURLY_VARIABLES:
+        values = data["hourly"].get(variable)
+
+        # Check that each variable contains 24 values.
+        if not isinstance(values, list) or len(values) != 24:
+            raise ValueError(
+                f"Invalid {variable} data for "
+                f"{city_coordinates['name']} on {target_date}: "
+                f"expected 24 values"
+            )
+
+        # Check for missing values.
+        if any(value is None for value in values):
+            raise ValueError(
+                f"Missing values in {variable} for "
+                f"{city_coordinates['name']} on {target_date}"
+            )
     return data
 
 

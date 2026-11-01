@@ -790,3 +790,102 @@ These validations improve reliability and make the project easier to reproduce a
 **Automatic PostgreSQL initialization**
 
 ![PostgreSQL initialization](docs/images/postgres-init-validation.png)
+
+
+
+## Resilience, Error Handling and Data Quality
+
+### Overview
+
+This phase improves pipeline reliability through automatic retries, HTTP error handling, data quality validation, and automated Python tests.
+
+### 1. Airflow Retry Validation
+
+A temporary DAG named `resilience_test` was created to simulate controlled task failures.
+
+The task was configured with:
+
+- 2 automatic retries.
+- A 20-second retry delay.
+- A command that intentionally returns exit code 1.
+
+Airflow successfully performed three attempts before marking the task as failed.
+
+This confirmed that task failures are detected and retries are executed automatically.
+
+The temporary DAG was removed after testing.
+
+### 2. API Error Handling
+
+The Python extraction script was improved to handle API failures.
+
+Both `get_city_coordinates()` and `fetch_weather()` now use exception handling to detect HTTP and network errors.
+
+When an API request fails, the script raises a descriptive exception containing the affected city and, where applicable, the processing date.
+
+The original exception is preserved to support troubleshooting.
+
+Errors are propagated to Airflow so that task retries can be applied.
+
+### 3. Weather Data Quality Validation
+
+Additional validation was implemented in `fetch_weather()`.
+
+The extraction now checks that:
+
+- The API response contains hourly weather data.
+- Each processed UTC day contains exactly 24 hourly timestamps.
+- All four weather variables contain 24 values.
+- No weather variable contains missing (`None`) values.
+
+Invalid data causes the extraction to fail before the affected city's JSON file is saved or uploaded to S3.
+
+### 4. Automated Python Tests
+
+Four automated unit tests were implemented using Python's built-in `unittest` framework and mocked API responses.
+
+| Test | Purpose | Result |
+|---|---|---|
+| Weather API timeout | Verify request failure handling | Passed |
+| Geocoding API timeout | Verify coordinate request failure handling | Passed |
+| Incomplete hourly data | Reject responses containing fewer than 24 hours | Passed |
+| Missing weather values | Reject incomplete weather measurements | Passed |
+
+Run the tests using:
+
+`docker compose exec airflow python /opt/airflow/scripts/test_error_handling.py`
+
+All four tests passed successfully.
+
+### 5. Final Pipeline Validation
+
+After implementing the improvements, the main `weather_pipeline` DAG was executed again.
+
+All four Airflow tasks completed successfully:
+
+- `extract_weather`
+- `load_weather`
+- `dbt_run`
+- `dbt_test`
+
+This confirmed that the new validations did not break the existing pipeline.
+
+### 6. Evidence
+
+**Airflow automatic retries**
+
+![Airflow retries validation](docs/images/airflow-retries-validation.png)
+
+**Automated Python tests**
+
+![Python tests validation](docs/images/python-tests-validation.png)
+
+### 7. Known Limitations
+
+- Retries are managed by Airflow, but automated notifications have not been configured.
+- The Python tests cover selected error scenarios rather than every possible API or infrastructure failure.
+- The pipeline does not yet have centralized monitoring or production-grade alerting.
+
+### Conclusion
+
+Phase 8 improved the reliability of the weather data pipeline by introducing explicit error handling, automated testing, input data validation, and verified task retry behavior.
