@@ -326,7 +326,7 @@ The ingestion script includes basic error handling:
 - Weather responses are checked to ensure hourly data is present.
 - Existing output directories can be reused without causing errors.
 
-More advanced retry handling will later be managed by Apache Airflow.
+Apache Airflow manages task retries automatically, with two retries and a five-minute delay between attempts.
 
 ### Running the ingestion
 
@@ -434,16 +434,13 @@ The main technical decisions made during this phase are:
 - **Explicit HTTP error handling:** failed API responses stop the pipeline instead of being silently accepted.
 - **Docker-first execution:** Python and its dependencies run inside the Airflow image rather than on the host machine.
 
-### Current limitations
+### Extraction Phase Outcome
 
-At this stage:
+The extraction component retrieves hourly weather data and stores partitioned JSON files locally.
 
-- Raw data is stored both locally and in a private Amazon S3 bucket.
-- The script is executed manually rather than through an Airflow DAG.
-- The raw JSON has not yet been loaded into PostgreSQL.
-- No dbt transformations have been created yet.
+Subsequent development phases added Amazon S3 storage, PostgreSQL ingestion, dbt transformations, and Apache Airflow orchestration.
 
-These components will be added in later phases.
+The complete pipeline is now implemented and validated.
 
 ### Data source
 
@@ -713,7 +710,6 @@ docker compose exec airflow dbt test --project-dir /opt/airflow/dbt --profiles-d
 - The final mart is materialized as a table for analytical consumption.
 - Data quality tests validate essential business rules.
 
-Pipeline orchestration will be implemented using Apache Airflow.
 
 ## Apache Airflow Orchestration
 
