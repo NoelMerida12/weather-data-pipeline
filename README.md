@@ -1,31 +1,210 @@
 # Weather Data Pipeline
 
-A small end-to-end Data Engineering project built with:
+**An end-to-end Data Engineering project built with Python, AWS S3, PostgreSQL, dbt, Apache Airflow, and Docker.**
 
-- Python
-- PostgreSQL
-- dbt
-- Apache Airflow
-- Docker
-- AWS S3
+## Project Overview
 
-The entire pipeline runtime is containerized with Docker Compose.
+This project implements a batch data pipeline that extracts, stores, transforms, and validates hourly weather data for 10 Spanish cities.
 
-> Work in progress.
+The goal is to demonstrate a complete Data Engineering workflow, from API ingestion to an analytics-ready dataset, using a reproducible Docker-based environment.
 
-## Local architecture
+### How It Works
 
-The project uses Docker Compose to provide a reproducible local environment.
+1. **Extract:** Python retrieves weather data from Open-Meteo.
+2. **Store:** Raw JSON files are preserved locally and uploaded to Amazon S3.
+3. **Load:** Weather observations are loaded into PostgreSQL using idempotent upserts.
+4. **Transform:** dbt builds staging, intermediate, and analytical models.
+5. **Validate:** dbt tests and Python unit tests check data quality.
+6. **Orchestrate:** Apache Airflow manages task dependencies, automatic retries, and daily scheduling.
 
-The host machine only requires Docker Desktop, Git, VS Code and the AWS CLI.
+### Key Features
 
-Docker Compose currently runs:
+- Automated daily batch pipeline.
+- Idempotent data ingestion.
+- Date- and city-partitioned raw storage.
+- Reusable SQL transformations with dbt.
+- Automated data quality checks and error handling.
+- Docker-first architecture.
+- End-to-end validation and database initialization tests.
 
-- PostgreSQL 17 for data storage and Airflow metadata.
-- A custom Apache Airflow 3.3.2 image based on Python 3.12.
-- dbt Core and dbt-postgres inside the Airflow image.
+### Current Scope
 
-Pipeline dependencies such as requests, boto3 and the PostgreSQL Python driver are installed inside the Airflow image rather than on the host machine.
+The pipeline currently processes 10 Spanish cities and runs in a local Docker environment with AWS S3 as its cloud storage layer.
+
+Planned extensions include a nationwide interactive weather dashboard and additional analytical use cases.
+
+**Project status:** Initial pipeline implemented and validated. Local development setup; not intended as an unattended production deployment.
+
+
+## Architecture
+
+The pipeline follows a batch-oriented ELT architecture. Apache Airflow orchestrates data extraction, ingestion, transformation, and quality validation.
+
+```mermaid
+flowchart TD
+    API["Open-Meteo API"] --> EXT["Python - extract_weather.py"]
+    EXT --> LOCAL["Local JSON files"]
+    LOCAL --> S3[("Amazon S3 - Raw weather data")]
+    S3 --> LOAD["Python - load_weather.py"]
+    LOAD --> PG[("PostgreSQL - raw.weather_hourly")]
+
+    subgraph DBT["dbt Transformations"]
+        STG["Staging"] --> INT["Intermediate"]
+        INT --> MART["Mart - fct_weather_daily"]
+    end
+
+    PG --> STG
+    MART --> TEST["dbt Data Quality Tests"]
+
+    AF["Apache Airflow"] -. "Orchestrates" .-> EXT
+    AF -. "Orchestrates" .-> LOAD
+    AF -. "Runs dbt" .-> DBT
+    AF -. "Runs tests" .-> TEST
+```
+
+
+## Quick Start — Windows
+
+This guide explains how to set up the Weather Data Pipeline on a Windows machine using Docker Desktop and AWS.
+
+### Prerequisites
+
+- Windows with Docker Desktop (WSL2 enabled)
+- Git
+- AWS CLI v2 with `aws login` support
+- An AWS account with permissions to use Amazon S3
+
+The Python, PostgreSQL, dbt, and Airflow dependencies run inside Docker containers.
+
+### 1. Clone the Repository
+
+```powershell
+git clone https://github.com/NoelMerida12/weather-data-pipeline.git
+cd weather-data-pipeline
+```
+
+### 2. Configure Environment Variables
+
+Create a local environment file:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Edit `.env` and configure the PostgreSQL and pgAdmin passwords, AWS profile, AWS Region, and S3 bucket name.
+
+Do not commit `.env` to version control.
+
+### 3. Authenticate with AWS
+
+This project uses temporary AWS credentials instead of permanent access keys.
+
+```powershell
+aws login --profile weather-pipeline
+```
+
+Verify authentication:
+
+```powershell
+aws sts get-caller-identity --profile weather-pipeline
+```
+
+The AWS profile and local login directory must be available before starting Docker.
+
+### 4. Configure Amazon S3
+
+Create a private S3 bucket in `eu-west-1` using the AWS Console, or use an existing bucket with suitable permissions.
+
+If creating a new bucket, choose a globally unique name and set the same name in `.env` under `S3_BUCKET_NAME`.
+
+AWS resources may incur charges depending on usage and account limits.
+
+### 5. Start Docker Services
+
+```powershell
+docker compose up -d --build
+```
+
+Check the container status:
+
+```powershell
+docker compose ps
+```
+
+Services:
+
+| Service | Local URL |
+|---|---|
+| Airflow | http://localhost:8080 |
+| pgAdmin | http://localhost:5050 |
+| PostgreSQL | localhost:5432 |
+
+The PostgreSQL initialization script automatically creates the raw schema and weather table when the database is initialized with an empty volume.
+
+### 6. Execute the Pipeline
+
+Open Airflow at http://localhost:8080 and locate the `weather_pipeline` DAG.
+
+Trigger a manual execution and verify that these four tasks succeed:
+
+```text
+extract_weather
+    ↓
+load_weather
+    ↓
+dbt_run
+    ↓
+dbt_test
+```
+
+The DAG is also configured for daily execution at 02:00 UTC while the local environment is running.
+
+### 7. Run Automated Tests
+
+Execute the Python tests:
+
+```powershell
+docker compose exec airflow python /opt/airflow/scripts/test_error_handling.py
+```
+
+Execute dbt quality tests:
+
+```powershell
+docker compose exec airflow dbt test --project-dir /opt/airflow/dbt --profiles-dir /opt/airflow/dbt
+```
+
+### Important Notes
+
+This configuration is designed for Windows because the Docker Compose file mounts AWS authentication files using `${USERPROFILE}`.
+
+AWS login sessions expire and may require renewed authentication. Daily scheduled execution requires Docker and Airflow to remain running.
+
+A fresh PostgreSQL initialization has been tested independently, but the entire application has not yet been validated through a clean-clone deployment.
+
+## Local Architecture
+
+The project uses Docker Compose to provide a reproducible local development environment.
+
+All Python dependencies, PostgreSQL, dbt, and Apache Airflow run inside Docker containers. The Windows host only requires Docker Desktop, Git, and AWS CLI. VS Code is recommended for development.
+
+### Docker Services
+
+| Service | Technology | Purpose |
+|---|---|---|
+| `postgres` | PostgreSQL 17 | Stores weather observations and Airflow metadata |
+| `airflow` | Apache Airflow 3.3.2 | Orchestrates the pipeline and executes Python scripts and dbt |
+| `pgadmin` | pgAdmin 4 | Provides a graphical interface for PostgreSQL |
+
+The Airflow Docker image includes Python 3.12, dbt Core, dbt-postgres, requests, boto3, and the PostgreSQL Python driver.
+
+### Storage and Networking
+
+- Docker named volumes preserve PostgreSQL data, pgAdmin configuration, and Airflow logs.
+- Bind mounts expose project scripts, DAGs, dbt models, and local raw data to the Airflow container.
+- PostgreSQL, Airflow, and pgAdmin are accessible from the Windows host through localhost.
+- AWS authentication uses temporary credentials mounted from the Windows host.
+
+This setup is designed for local development rather than production deployment.
 
 
 
