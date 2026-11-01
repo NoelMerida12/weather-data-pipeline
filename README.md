@@ -536,4 +536,137 @@ docker compose exec airflow dbt test --project-dir /opt/airflow/dbt --profiles-d
 
 Pipeline orchestration will be implemented using Apache Airflow.
 
-> Work in progress.
+## Apache Airflow Orchestration
+
+In this phase, Apache Airflow was introduced to orchestrate the complete weather data pipeline.
+
+Previously, extraction, loading, and dbt transformations were executed manually. Airflow now manages task execution, dependencies, retries, and scheduling.
+
+### DAG Architecture
+
+The DAG is defined in `dags/weather_pipeline_dag.py` and contains four tasks:
+
+```text
+extract_weather
+      |
+      v
+load_weather
+      |
+      v
+dbt_run
+      |
+      v
+dbt_test
+```
+
+| Task | Description |
+|---|---|
+| `extract_weather` | Extracts hourly weather data from Open-Meteo and uploads JSON files to Amazon S3 |
+| `load_weather` | Reads JSON files from S3 and upserts weather records into PostgreSQL |
+| `dbt_run` | Executes staging, intermediate, and marts transformations |
+| `dbt_test` | Runs dbt data quality tests |
+
+Task dependencies ensure that downstream tasks only execute after upstream tasks succeed.
+
+### Task Retries
+
+Automatic retries are configured:
+
+- Maximum retries: 2
+- Retry delay: 5 minutes
+- Maximum attempts per task: 3
+
+This helps the pipeline recover from temporary failures, such as API connectivity issues.
+
+### Consistent Processing Date
+
+Airflow passes the `WEATHER_TARGET_DATE` environment variable to both extraction and loading tasks.
+
+The processing date is calculated from the DAG run's scheduled execution time in UTC.
+
+This ensures that both tasks process the same date, even if execution is delayed or a task is retried.
+
+When executed manually, the DAG also uses the previous UTC day relative to the run time.
+
+### Daily Scheduling
+
+The DAG uses the following Cron expression:
+
+```python
+schedule="0 2 * * *"
+```
+
+This schedules the pipeline daily at 02:00 UTC.
+
+The DAG also uses:
+
+```python
+catchup=False
+```
+
+This prevents automatic creation of historical scheduled runs that were missed before the DAG was enabled.
+
+### Running the Pipeline
+
+Start the Docker environment:
+
+```powershell
+docker compose up -d
+```
+
+Authenticate with AWS when required:
+
+```powershell
+aws login --profile weather-pipeline
+```
+
+Open the Airflow interface:
+
+http://localhost:8080
+
+Select `weather_pipeline` to inspect the DAG, trigger a manual run, review task status, and examine execution logs.
+
+### Validation
+
+The complete DAG was successfully executed from the Airflow interface.
+
+All four tasks completed successfully:
+
+- Weather data was extracted and uploaded to S3.
+- Weather records were loaded into PostgreSQL.
+- All three dbt models executed successfully.
+- All four dbt data quality tests passed.
+
+Airflow logs also confirmed that the extraction processed the expected UTC date and uploaded files for all 10 cities.
+
+### Screenshots
+
+**Successful DAG execution**
+
+![Airflow DAG execution](docs/images/airflow-dag-success.png)
+
+**Weather extraction logs**
+
+![Airflow extraction logs](docs/images/airflow-extraction-logs.png)
+
+**Daily DAG scheduling**
+
+![Airflow daily scheduling](docs/images/airflow-schedule.png)
+
+### Technical Decisions
+
+- Airflow 3 is used for workflow orchestration.
+- `BashOperator` executes the existing Python scripts and dbt commands.
+- `LocalExecutor` is used for the local Docker environment.
+- Task dependencies prevent premature downstream execution.
+- Automatic retries improve resilience to transient errors.
+- A shared processing date maintains consistency between extraction and loading.
+- Docker provides a reproducible development environment.
+
+### Current Limitations
+
+- The pipeline runs only while Docker and Airflow are running.
+- AWS authentication uses temporary `aws login` credentials that require renewal.
+- The current setup is intended for local development and learning, not unattended production workloads.
+
+Future improvements could include production-grade AWS authentication, monitoring, alerting, and more robust recovery mechanisms.

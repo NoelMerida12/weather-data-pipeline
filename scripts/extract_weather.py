@@ -84,8 +84,13 @@ def get_city_coordinates(city):
     }
 
 def get_target_date():
-    """Return yesterday's date in UTC."""
+    """REturn the configured processing date or yesterday in UTC."""
 
+    target_date = os.getenv("WEATHER_TARGET_DATE")
+
+    if target_date:
+        return datetime.strptime(target_date, "%Y-%m-%d").date().isoformat()
+    
     yesterday = datetime.now(timezone.utc).date() - timedelta(days=1)
 
     return yesterday.isoformat()
