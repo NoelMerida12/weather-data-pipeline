@@ -670,3 +670,123 @@ Airflow logs also confirmed that the extraction processed the expected UTC date 
 - The current setup is intended for local development and learning, not unattended production workloads.
 
 Future improvements could include production-grade AWS authentication, monitoring, alerting, and more robust recovery mechanisms.
+
+##  End-to-End Validation and Reproducibility
+
+### Overview
+
+This phase focuses on validating the complete weather data pipeline, verifying data consistency, testing persistence, and improving database initialization for reproducibility.
+
+### 1. End-to-End Pipeline Validation
+
+The complete pipeline was executed successfully through Apache Airflow.
+
+**Data flow:**
+
+```text
+Open-Meteo API
+      |
+      v
+Amazon S3 (Raw JSON)
+      |
+      v
+PostgreSQL (raw.weather_hourly)
+      |
+      v
+dbt (Staging → Intermediate → Marts)
+      |
+      v
+analytics.fct_weather_daily
+```
+
+Validation results for October 31, 2026:
+
+| Check | Result |
+|---|---|
+| Cities processed | 10 |
+| S3 JSON files | 10 |
+| PostgreSQL hourly records | 240 |
+| Daily analytical records | 10 |
+| Complete city-days | 10 |
+| Airflow task execution | Successful |
+
+### 2. Idempotency Testing
+
+The Airflow DAG was executed multiple times for the same processing date.
+
+PostgreSQL maintained the expected 240 hourly records across 10 cities, without creating duplicates.
+
+This behavior is supported by the composite primary key `(city, observed_at)` and the `ON CONFLICT DO UPDATE` clause used during ingestion.
+
+### 3. Docker Persistence
+
+The Docker environment was stopped and recreated using:
+
+```powershell
+docker compose down
+docker compose up -d
+```
+
+After restarting:
+
+- PostgreSQL retained the previously ingested weather data.
+- Airflow retained the DAG configuration and execution history.
+- pgAdmin and the other services started successfully.
+
+Docker named volumes provide persistent storage independently of container lifecycles.
+
+### 4. Automatic PostgreSQL Initialization
+
+The Docker Compose configuration was updated to mount the database initialization script:
+
+```yaml
+- ./sql/create_raw_tables.sql:/docker-entrypoint-initdb.d/01-create_raw_tables.sql:ro
+```
+
+When PostgreSQL initializes a new, empty database volume, the script automatically creates:
+
+- The `raw` schema.
+- The `raw.weather_hourly` table.
+- The composite primary key.
+
+A separate temporary PostgreSQL 17 container was used to verify initialization without modifying the existing project database.
+
+The test confirmed that `raw.weather_hourly` was created successfully.
+
+### 5. Reproducibility
+
+The Git repository contains the key project components:
+
+- Dockerfile and Docker Compose configuration.
+- Python extraction and loading scripts.
+- Airflow DAG.
+- dbt models, profiles, and tests.
+- PostgreSQL initialization SQL.
+- Environment variable template and documentation.
+
+Database initialization was validated independently. A complete fresh-clone deployment of the entire pipeline has not yet been tested.
+
+The `.env` file and AWS authentication credentials are intentionally excluded from version control.
+
+### 6. Known Limitations
+
+- The local pipeline requires Docker to be running.
+- AWS authentication requires valid temporary credentials.
+- PostgreSQL initialization scripts execute automatically only when the database volume is initially empty.
+- Full unattended operation and production deployment are outside the scope of this validation phase.
+
+### Conclusion
+
+Phase 7 successfully verified end-to-end data processing, idempotent ingestion, Docker persistence, and automatic PostgreSQL schema initialization.
+
+These validations improve reliability and make the project easier to reproduce and maintain.
+
+### Validation Screenshots
+
+**End-to-end data validation**
+
+![End-to-end validation](docs/images/end-to-end-validation.png)
+
+**Automatic PostgreSQL initialization**
+
+![PostgreSQL initialization](docs/images/postgres-init-validation.png)
