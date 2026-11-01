@@ -13,3 +13,17 @@ CREATE TABLE IF NOT EXISTS raw.weather_hourly (
 
     PRIMARY KEY (city, observed_at)
 );
+
+
+-- Store Spanish municipalities and their geographical coordinates.
+CREATE TABLE IF NOT EXISTS raw.municipalities (
+    municipality_id VARCHAR(5) PRIMARY KEY,
+    municipality_name VARCHAR(150) NOT NULL,
+    province_name VARCHAR(100) NOT NULL,
+    province_code VARCHAR(2) NOT NULL,
+    autonomous_community_code VARCHAR(10) NOT NULL,
+    latitude NUMERIC(9,6) NOT NULL,
+    longitude NUMERIC(9,6) NOT NULL,
+    population INTEGER,
+    loaded_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);

@@ -35,6 +35,11 @@ CITIES = [
     "Murcia",
     "Palma",
     "Alicante",
+    "Granada",
+    "Valladolid",
+    "Salamanca",
+    "Burgos",
+    "Toledo",
 ]
 
 # Hourly variables
